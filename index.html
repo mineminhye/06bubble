@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>얼음의 도시: 외심 방어 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #020617;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #f0f9ff;
+        }
+
+        #app {
+            position: relative;
+            width: 1000px;
+            height: 600px;
+            background: radial-gradient(circle at center, #0c4a6e 0%, #082f49 100%);
+            border-radius: 32px;
+            box-shadow: 0 0 60px rgba(56, 189, 248, 0.4);
+            overflow: hidden;
+            border: 2px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            padding: 1.5rem;
+        }
+
+        .screen.active { display: flex; }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            touch-action: none;
+        }
+
+        .neon-text {
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.8), 0 0 20px rgba(56, 189, 248, 0.5);
+        }
+
+        .btn-ice {
+            background: rgba(56, 189, 248, 0.2);
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .btn-ice:hover {
+            background: rgba(56, 189, 248, 0.4);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+        }
+
+        .snow {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <canvas id="snowCanvas" class="snow"></canvas>
+
+        <!-- 1. 인트로 화면 -->
+        <div id="screen-intro" class="screen active bg-slate-900/70 backdrop-blur-md text-center">
+            <div class="mb-2 text-sky-400 font-bold tracking-widest uppercase text-sm">Stage 03</div>
+            <h1 class="text-5xl font-black italic text-white mb-8 tracking-tighter neon-text">얼음의 도시:<br>외심 방어 시스템</h1>
+            
+            <div class="max-w-2xl bg-sky-950/50 p-8 rounded-[2.5rem] border border-sky-400/30 text-center mb-10 shadow-2xl">
+                <p class="text-2xl font-bold text-white mb-6 italic leading-snug">
+                    "앗! 눈사람 마물이 나타났어!<br>
+                    어느 초소에서 출동해야 가장 효과적으로 방어할 수 있을까?"
+                </p>
+                <p class="text-lg leading-relaxed break-keep text-sky-100">
+                    초소 사이에 연결된 **흰색 가이드 라인**을 선택하여 수직이등분선을 만드세요.<br>
+                    외심 보석이 활성화되면 방어막이 완성되고 마물은 빛과 함께 사라집니다.<br>
+                    결계는 <span class="text-orange-400 font-bold">화면 전체를 분할</span>하며 도시를 영구히 보호합니다.
+                </p>
+            </div>
+
+            <div class="flex flex-col gap-4 w-full max-w-xs mx-auto">
+                <button onclick="showScreen('game')" class="btn-ice px-8 py-5 text-white rounded-2xl text-xl font-bold shadow-xl">
+                    🛡️ 시스템 기동하기
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. 게임 화면 -->
+        <div id="screen-game" class="screen p-0 overflow-hidden">
+            <canvas id="gameCanvas"></canvas>
+            
+            <div class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+                <div class="bg-slate-900/80 p-4 rounded-2xl border border-sky-500/30 backdrop-blur-md pointer-events-auto shadow-lg">
+                    <h2 class="text-sky-400 font-black text-lg mb-0.5 uppercase tracking-tighter text-balance">Geometric Defense</h2>
+                    <p class="text-[10px] text-sky-200/60">활성화된 보석: <span id="ui-count" class="text-white font-bold text-xs">0 / 0</span></p>
+                </div>
+                
+                <div class="flex gap-2 items-start">
+                    <div class="bg-slate-900/80 p-4 rounded-2xl border border-sky-500/30 backdrop-blur-md pointer-events-auto text-right shadow-lg">
+                        <p class="text-[9px] font-bold text-sky-400 uppercase">Status</p>
+                        <p id="ui-status" class="text-xs font-bold text-white italic text-balance">가이드 라인을 클릭하세요.</p>
+                    </div>
+                    <button onclick="exitGame()" class="pointer-events-auto bg-slate-900/80 hover:bg-red-900/60 border border-sky-500/30 hover:border-red-400/50 backdrop-blur-md rounded-2xl w-12 h-12 flex items-center justify-center text-sky-300 hover:text-red-300 text-lg font-bold shadow-lg transition-all" title="나가기">✕</button>
+                </div>
+            </div>
+
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 px-8 py-3 rounded-full border border-sky-500/30 backdrop-blur-md pointer-events-auto text-center shadow-2xl">
+                <p class="text-xs text-sky-100">
+                    <span class="text-sky-400 font-bold">Guide:</span> 결계가 완성되면 마물은 정화되어 사라집니다.
+                </p>
+            </div>
+        </div>
+
+        <!-- 3. 승리 모달 -->
+        <div id="victoryModal" class="hidden fixed inset-0 bg-sky-950/90 backdrop-blur-xl z-50 flex items-center justify-center p-6 text-balance text-center">
+            <div class="bg-white/5 p-12 rounded-[3rem] text-center max-w-sm shadow-2xl border border-white/10">
+                <div class="text-6xl mb-6">❄️</div>
+                <h2 class="text-4xl font-black text-white mb-2 tracking-tighter neon-text">외접원의 방 도달</h2>
+                <p class="text-sm text-sky-200 mb-8 leading-relaxed italic">보로노이 방어 시스템이 완벽히 구축되었습니다.<br>도시를 분할하는 결계가 마물을 완전히 정화했습니다.</p>
+                <div class="flex flex-col gap-3">
+                    <button onclick="window.open('https://wontheworld.netlify.app', '_blank')" class="btn-ice w-full py-4 text-white rounded-2xl font-bold text-lg shadow-lg">
+                        🗺️ 모험의 지도 펼치기
+                    </button>
+                    <button onclick="alert('📜 지혜의 석판은 곧 열립니다!\n다음 업데이트를 기다려 주세요.')" class="w-full py-4 text-white/40 rounded-2xl font-bold text-lg shadow-lg border border-white/10 cursor-not-allowed" style="background: rgba(255,255,255,0.03);">
+                        📜 지혜의 석판 보기
+                    </button>
+                    <button onclick="restartGame()" class="btn-ice w-full py-4 text-white rounded-2xl font-bold text-lg shadow-lg">
+                        🔄 게임 다시 하기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 전역 상태 관리 ---
+        let gameState = 'INTRO';
+        let towers = [];
+        let edges = []; 
+        let triangles = []; 
+        let monsters = [];
+        let particles = [];
+        let isGameOver = false;
+        let gameLoopId = null;
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 좌표 정밀 보정
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+        }
+
+        const getDist = (x1, y1, x2, y2) => Math.sqrt((x1-x2)**2 + (y1-y2)**2);
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(`screen-${id}`).classList.add('active');
+            gameState = id.toUpperCase();
+            if (id === 'game') initGame();
+        }
+
+        // --- 눈 배경 ---
+        const snowCanvas = document.getElementById('snowCanvas');
+        const sctx = snowCanvas.getContext('2d');
+        let snowflakes = [];
+        function initSnow() {
+            snowCanvas.width = 1000; snowCanvas.height = 600;
+            snowflakes = Array.from({length: 60}, () => ({
+                x: Math.random() * 1000, y: Math.random() * 600, r: Math.random() * 2 + 1, s: Math.random() * 0.4 + 0.2
+            }));
+        }
+        function drawSnow() {
+            sctx.clearRect(0,0,1000,600);
+            sctx.fillStyle = "white";
+            snowflakes.forEach(f => {
+                sctx.beginPath(); sctx.arc(f.x, f.y, f.r, 0, Math.PI*2); sctx.fill();
+                f.y += f.s; if(f.y > 600) f.y = -10;
+            });
+            requestAnimationFrame(drawSnow);
+        }
+
+        // --- 게임 엔진 ---
+        function initGame() {
+            canvas.width = 1000; canvas.height = 600;
+            towers = []; edges = []; triangles = []; monsters = []; particles = [];
+            isGameOver = false;
+            
+            // 육각형 격자 타워 배치
+            const rows = 3; const cols = 4; const spacingX = 220; const spacingY = 180;
+            const offsetX = 180; const offsetY = 140;
+
+            let count = 0;
+            for(let r=0; r<rows; r++) {
+                for(let c=0; c<cols; c++) {
+                    if(count >= 10) break;
+                    let x = offsetX + c * spacingX + (r % 2 === 1 ? spacingX / 2 : 0);
+                    let y = offsetY + r * spacingY;
+                    x += (Math.random() - 0.5) * 50; y += (Math.random() - 0.5) * 50;
+                    towers.push({ id: count++, x, y });
+                }
+            }
+
+            // 삼각형 생성 (Delaunay)
+            for (let i = 0; i < towers.length; i++) {
+                for (let j = i + 1; j < towers.length; j++) {
+                    for (let k = j + 1; k < towers.length; k++) {
+                        const t1 = towers[i], t2 = towers[j], t3 = towers[k];
+                        const cc = getCircumcenter(t1, t2, t3);
+                        if (cc && cc.x > 0 && cc.x < 1000 && cc.y > 0 && cc.y < 600) {
+                            const radius = getDist(cc.x, cc.y, t1.x, t1.y);
+                            let isDelaunay = true;
+                            for (let m = 0; m < towers.length; m++) {
+                                if (m !== i && m !== j && m !== k) {
+                                    if (getDist(cc.x, cc.y, towers[m].x, towers[m].y) < radius - 5) {
+                                        isDelaunay = false; break;
+                                    }
+                                }
+                            }
+                            if (isDelaunay) {
+                                triangles.push({ tids: [i, j, k], x: cc.x, y: cc.y, revealed: false });
+                                addEdge(i, j); addEdge(j, k); addEdge(k, i);
+                            }
+                        }
+                    }
+                }
+            }
+
+            towers.forEach(t => {
+                monsters.push({
+                    ownerId: t.id, x: t.x + (Math.random()-0.5)*40, y: t.y + (Math.random()-0.5)*40,
+                    size: 18, vx: (Math.random()-0.5)*0.5, vy: (Math.random()-0.5)*0.5, 
+                    phase: Math.random()*Math.PI*2, alpha: 1.0, melting: false
+                });
+            });
+
+            updateUI();
+            gameLoopId = requestAnimationFrame(render);
+        }
+
+        function addEdge(i, j) {
+            if (!edges.some(e => (e.t1 === i && e.t2 === j) || (e.t1 === j && e.t2 === i))) {
+                edges.push({ t1: i, t2: j, active: false });
+            }
+        }
+
+        function getCircumcenter(a, b, c) {
+            const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+            if (Math.abs(d) < 10) return null;
+            const ux = ((a.x**2 + a.y**2) * (b.y - c.y) + (b.x**2 + b.y**2) * (c.y - a.y) + (c.x**2 + c.y**2) * (a.y - b.y)) / d;
+            const uy = ((a.x**2 + a.y**2) * (c.x - b.x) + (b.x**2 + b.y**2) * (a.x - c.x) + (c.x**2 + c.y**2) * (b.x - a.x)) / d;
+            return { x: ux, y: uy };
+        }
+
+        canvas.onclick = (e) => {
+            if (isGameOver || gameState !== 'GAME') return;
+            const pos = getMousePos(e);
+
+            for (let tri of triangles) {
+                if (!tri.revealed) {
+                    const activeCount = edges.filter(e => e.active && tri.tids.includes(e.t1) && tri.tids.includes(e.t2)).length;
+                    if (activeCount === 3 && getDist(pos.x, pos.y, tri.x, tri.y) < 60) {
+                        tri.revealed = true;
+                        purifyArea(tri);
+                        document.getElementById('ui-status').innerText = "외심 보석 활성화! 구역이 정화됩니다.";
+                        updateUI();
+                        checkVictory();
+                        return;
+                    }
+                }
+            }
+
+            for (let edge of edges) {
+                const t1 = towers[edge.t1], t2 = towers[edge.t2];
+                if (distToSegment(pos, t1, t2) < 20) {
+                    edge.active = !edge.active;
+                    return;
+                }
+            }
+        };
+
+        function distToSegment(p, a, b) {
+            const l2 = (a.x - b.x)**2 + (a.y - b.y)**2;
+            if (l2 === 0) return getDist(p.x, p.y, a.x, a.y);
+            let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return getDist(p.x, p.y, a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
+        }
+
+        function purifyArea(tri) {
+            monsters.forEach(m => {
+                if (tri.tids.includes(m.ownerId)) {
+                    m.melting = true;
+                    for(let i=0; i<25; i++){
+                        particles.push({
+                            x: m.x, y: m.y, 
+                            vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6,
+                            life: 1.0, size: Math.random()*3+2,
+                            color: Math.random() > 0.5 ? "#bae6fd" : "#ffffff"
+                        });
+                    }
+                }
+            });
+        }
+
+        function updateUI() {
+            const count = triangles.filter(t => t.revealed).length;
+            document.getElementById('ui-count').innerText = `${count} / ${triangles.length}`;
+        }
+
+        function checkVictory() {
+            if (triangles.every(t => t.revealed)) {
+                isGameOver = true;
+                setTimeout(() => document.getElementById('victoryModal').classList.remove('hidden'), 2500);
+            }
+        }
+
+        function drawRook(x, y, color) {
+            ctx.save(); ctx.translate(x, y);
+            ctx.fillStyle = color; ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
+            const w = 24;
+            ctx.beginPath(); ctx.rect(-w/2, 12, w, 8); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-w/2+4, 12); ctx.lineTo(-w/2+7, -10); ctx.lineTo(w/2-7, -10); ctx.lineTo(w/2-4, 12); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.rect(-w/2+2, -18, w-4, 8); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#082f49"; ctx.fillRect(-2, -18, 4, 3);
+            ctx.restore();
+        }
+
+        function render() {
+            if (gameState !== 'GAME') return;
+            ctx.clearRect(0, 0, 1000, 600);
+
+            // 1. 빛 입자 (정화 효과)
+            particles.forEach((p, index) => {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.012;
+                if(p.life <= 0) { particles.splice(index, 1); return; }
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // 2. 구역 채우기
+            triangles.forEach(tri => {
+                if (tri.revealed) {
+                    ctx.beginPath();
+                    ctx.moveTo(towers[tri.tids[0]].x, towers[tri.tids[0]].y);
+                    ctx.lineTo(towers[tri.tids[1]].x, towers[tri.tids[1]].y);
+                    ctx.lineTo(towers[tri.tids[2]].x, towers[tri.tids[2]].y);
+                    ctx.closePath();
+                    ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+                    ctx.fill();
+                }
+            });
+
+            // 3. 눈사람 정화 애니메이션
+            monsters.forEach((m) => {
+                if (m.melting) {
+                    m.alpha -= 0.012;
+                    m.size += 0.1; // 정화 시 살짝 커지며 흐려짐
+                } else {
+                    let nearestId = -1; let minDist = Infinity;
+                    towers.forEach(t => { let d = getDist(m.x, m.y, t.x, t.y); if(d < minDist) { minDist = d; nearestId = t.id; }});
+                    if(nearestId !== m.ownerId) {
+                        const owner = towers[m.ownerId];
+                        const angle = Math.atan2(owner.y - m.y, owner.x - m.x);
+                        m.vx += Math.cos(angle) * 0.15; m.vy += Math.sin(angle) * 0.15;
+                    } else {
+                        m.vx += (Math.random()-0.5) * 0.12; m.vy += (Math.random()-0.5) * 0.12;
+                    }
+                    m.vx *= 0.94; m.vy *= 0.94; m.x += m.vx; m.y += m.vy;
+                }
+
+                if (m.alpha > 0) {
+                    ctx.save(); ctx.globalAlpha = m.alpha;
+                    const b = Math.sin(Date.now()/400 + m.phase)*5;
+                    ctx.translate(m.x, m.y + b);
+                    ctx.beginPath(); ctx.arc(0, 7, m.size*0.7, 0, Math.PI*2); ctx.fillStyle = "white"; ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, -7, m.size*0.5, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = "#334155"; ctx.beginPath(); ctx.arc(-3.5, -8, 1.5, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(3.5, -8, 1.5, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = "#fb923c"; ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(5, -6); ctx.lineTo(0, -4); ctx.fill();
+                    ctx.restore(); ctx.globalAlpha = 1.0;
+                }
+            });
+
+            // 4. 가이드 라인
+            edges.forEach(e => {
+                const t1 = towers[e.t1], t2 = towers[e.t2];
+                ctx.beginPath(); ctx.moveTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y);
+                ctx.strokeStyle = e.active ? "rgba(56, 189, 248, 0.7)" : "rgba(255, 255, 255, 0.35)";
+                ctx.lineWidth = e.active ? 3 : 1;
+                ctx.stroke();
+
+                if (e.active) {
+                    const mx = (t1.x + t2.x) / 2, my = (t1.y + t2.y) / 2;
+                    const dx = t2.x - t1.x, dy = t2.y - t1.y;
+                    ctx.save(); ctx.beginPath();
+                    ctx.moveTo(mx - dy * 100, my + dx * 100); ctx.lineTo(mx + dy * 100, my - dx * 100);
+                    ctx.strokeStyle = "rgba(186, 230, 253, 0.25)"; ctx.setLineDash([8, 8]); ctx.stroke(); ctx.restore();
+                }
+            });
+
+            // 5. 무한 확장 결계 (오차 수정됨)
+            triangles.forEach(tri => {
+                const activeCount = edges.filter(e => e.active && tri.tids.includes(e.t1) && tri.tids.includes(e.t2)).length;
+                if (tri.revealed) {
+                    ctx.beginPath(); ctx.arc(tri.x, tri.y, 9, 0, Math.PI*2);
+                    ctx.fillStyle = "#bae6fd"; ctx.shadowBlur = 25; ctx.shadowColor = "#38bdf8";
+                    ctx.fill(); ctx.shadowBlur = 0;
+
+                    triangles.forEach(other => {
+                        if (other.revealed && other !== tri) {
+                            const common = tri.tids.filter(id => other.tids.includes(id));
+                            if (common.length === 2) {
+                                ctx.beginPath(); ctx.moveTo(tri.x, tri.y); ctx.lineTo(other.x, other.y);
+                                ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 6; ctx.stroke();
+                            }
+                        }
+                    });
+
+                    // 화면 분할 무한 확장 (방향 보정 알고리즘 적용)
+                    const triEdges = [[tri.tids[0], tri.tids[1]], [tri.tids[1], tri.tids[2]], [tri.tids[2], tri.tids[0]]];
+                    const centroidX = (towers[tri.tids[0]].x + towers[tri.tids[1]].x + towers[tri.tids[2]].x) / 3;
+                    const centroidY = (towers[tri.tids[0]].y + towers[tri.tids[1]].y + towers[tri.tids[2]].y) / 3;
+
+                    triEdges.forEach(tp => {
+                        const isShared = triangles.some(other => other !== tri && other.revealed && tp.every(id => other.tids.includes(id)));
+                        if (!isShared) {
+                            const t1 = towers[tp[0]], t2 = towers[tp[1]];
+                            const midX = (t1.x + t2.x) / 2, midY = (t1.y + t2.y) / 2;
+                            
+                            // 광선의 기본 방향: (t2.x-t1.x, t2.y-t1.y)에 수직인 벡터
+                            let rx = -(t2.y - t1.y);
+                            let ry = (t2.x - t1.x);
+
+                            // 무게중심에서 중점을 향하는 벡터가 '바깥쪽'임
+                            const outX = midX - centroidX;
+                            const outY = midY - centroidY;
+
+                            // 수직 벡터가 바깥쪽을 향하도록 내적(dot product)으로 확인 후 반전
+                            if (rx * outX + ry * outY < 0) {
+                                rx = -rx;
+                                ry = -ry;
+                            }
+
+                            const len = 3000 / Math.sqrt(rx*rx + ry*ry);
+                            ctx.beginPath();
+                            ctx.moveTo(tri.x, tri.y);
+                            ctx.lineTo(tri.x + rx * len, tri.y + ry * len);
+                            ctx.strokeStyle = "rgba(251, 146, 60, 0.9)";
+                            ctx.lineWidth = 5;
+                            ctx.stroke();
+                            
+                            ctx.beginPath(); ctx.arc(tri.x, tri.y, 4, 0, Math.PI*2); ctx.fillStyle = "#fb923c"; ctx.fill();
+                        }
+                    });
+                } else if (activeCount === 3) {
+                    const pulse = 24 + Math.sin(Date.now()/100)*12;
+                    ctx.beginPath(); ctx.arc(tri.x, tri.y, pulse, 0, Math.PI*2);
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.4)"; ctx.fill();
+                    ctx.strokeStyle = "rgba(56, 189, 248, 0.9)"; ctx.lineWidth = 3; ctx.stroke();
+                }
+            });
+
+            towers.forEach(t => drawRook(t.x, t.y, "#1e293b"));
+            gameLoopId = requestAnimationFrame(render);
+        }
+
+        function restartGame() {
+            document.getElementById('victoryModal').classList.add('hidden');
+            if (gameLoopId) { cancelAnimationFrame(gameLoopId); gameLoopId = null; }
+            initGame();
+        }
+
+        function exitGame() {
+            if (confirm('게임을 종료하고 인트로로 돌아갈까요?')) {
+                if (gameLoopId) { cancelAnimationFrame(gameLoopId); gameLoopId = null; }
+                isGameOver = true;
+                gameState = 'INTRO';
+                document.getElementById('victoryModal').classList.add('hidden');
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('screen-intro').classList.add('active');
+            }
+        }
+
+        window.onload = () => { initSnow(); drawSnow(); };
+    </script>
+</body>
+</html>
