@@ -52,14 +52,11 @@
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         }
         .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #92400e; }
-        
-        /* 새로운 버튼 스타일 추가 */
         .btn-tablet {
             background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
             box-shadow: 0 4px 0 #4c1d95;
         }
         .btn-tablet:active { box-shadow: 0 1px 0 #4c1d95; }
-        
         .btn-map {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             box-shadow: 0 4px 0 #047857;
@@ -108,11 +105,6 @@
             color: #fca5a5;
             box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
         }
-        .btn-disabled {
-            opacity: 0.4;
-            cursor: not-allowed !important;
-        }
-        .btn-disabled:active { transform: none !important; box-shadow: 0 4px 0 #4c1d95 !important; }
     </style>
 </head>
 <body>
@@ -121,7 +113,6 @@
 
     <div id="ui-layer">
         <div class="flex justify-between items-start w-full px-10">
-            <!-- 좌측 분석 상태 및 타이머 패널 -->
             <div class="flex gap-4 items-center">
                 <div class="panel border-l-4 border-l-amber-500">
                     <div class="text-[9px] text-amber-400 font-bold orbitron tracking-widest">TANGENT ANALYSIS</div>
@@ -149,18 +140,17 @@
     </div>
 
     <div id="message-box">
-        <!-- 시작 화면 -->
         <div id="start-screen" class="panel p-10">
             <h2 class="text-4xl font-black mb-4 orbitron text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600">방울 접선 미션</h2>
             <p class="mb-8 leading-relaxed text-slate-300 text-sm">
                 비눗방울의 도시에 오신 것을 환영합니다!<br>
-                <b>2분(120초)의 제한 시간</b> 안에 뚫려있는 방울들을 정화해야 합니다.<br>
-                총 <b>3개의 정밀 난이도 스테이지</b>를 무사히 돌파해 보세요!
+                <b>2분(120초)의 제한 시간</b> 안에 방울들을 정화해야 합니다.<br>
+                총 <b>3개의 정밀 난이도 스테이지</b>를 무사히 돌파해 보세요!<br><br>
+                <span class="text-sky-400">💡 위 방울을 터뜨리면 매달린 방울도 함께 떨어집니다!</span>
             </p>
             <div class="btn inline-block" onclick="startGame()">미션 시작</div>
         </div>
 
-        <!-- 실패 화면 (시간 초과) -->
         <div id="fail-screen" class="panel p-10 hidden border-red-500/50">
             <h2 class="text-4xl font-black mb-4 text-red-500 orbitron">TIME OVER!</h2>
             <p class="mb-8 leading-relaxed text-sm text-slate-300 font-bold">
@@ -168,13 +158,12 @@
                 비눗방울의 틈새 접선 각도를 조금 더 날카롭게 공략해 보세요.
             </p>
             <div class="flex flex-col gap-4">
-                <div class="btn w-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700" onclick="location.reload()">
+                <div class="btn w-full bg-gradient-to-r from-red-500 to-rose-600" onclick="location.reload()">
                     <span>🔄</span> 다시 도전하기
                 </div>
             </div>
         </div>
 
-        <!-- 클리어 화면 (선택지 업데이트) -->
         <div id="clear-screen" class="panel p-10 hidden">
             <h2 class="text-4xl font-black mb-4 text-amber-400 orbitron">MISSION COMPLETE!</h2>
             <p class="mb-8 leading-relaxed text-sm text-slate-300 font-bold">
@@ -207,9 +196,10 @@
     let gameState = 'START';
     let currentLevel = 1;
     let score = 0;
-    let bubbles = []; 
+    let bubbles = [];
+    let fallingBubbles = []; // 중력으로 떨어지는 버블들
     let particles = [];
-    let activeLance = null; 
+    let activeLance = null;
     let nextLanceColor = '';
     let mouse = { x: 0, y: 0 };
     let isFiring = false;
@@ -217,20 +207,81 @@
     let levelClearing = false;
     let gameLoopId = null;
 
-    // 타임리밋 설정 (120초 = 2분)
     let timeLeft = 120;
     let timerInterval = null;
 
-    // 조준 가이드 및 접선 조준 고정 데이터
     let lockedBubble = null;
     let lockedTangentPoint = null;
     let lockedAngle = null;
 
     const COLORS = ['#38bdf8', '#f472b6', '#fbbf24', '#4ade80', '#a78bfa'];
-    const BASE_RADIUS = 42; 
+    const BASE_RADIUS = 42;
     const GRID_COLS = 11;
-    const ROOF_Y = 120; 
+    const ROOF_Y = 120;
     const SIDE_WALL_WIDTH = 40;
+    const GRAVITY = 0.35;
+
+    // ─── FallingBubble: 중력으로 떨어지는 버블 ───
+    class FallingBubble {
+        constructor(x, y, color, radius) {
+            this.x = x; this.y = y;
+            this.color = color;
+            this.radius = radius;
+            this.vx = (Math.random() - 0.5) * 2.5;
+            this.vy = -1 + Math.random() * 1; // 살짝 위로 튀었다가 떨어짐
+            this.wobble = Math.random() * Math.PI * 2;
+            this.alpha = 1;
+            this.dead = false;
+            this.rotation = 0;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+        }
+        update() {
+            this.vy += GRAVITY;
+            this.x += this.vx;
+            this.y += this.vy;
+            this.wobble += 0.04;
+            this.rotation += this.rotationSpeed;
+            // 화면 아래 벗어나면 파티클 폭발 후 제거
+            if (this.y > height + this.radius * 2) {
+                // 터지는 파티클
+                for (let i = 0; i < 8; i++) {
+                    particles.push(new FireworkParticle(this.x, height - 10, this.color, 'spark'));
+                }
+                particles.push(new FireworkParticle(this.x, height - 10, this.color, 'flash'));
+                this.dead = true;
+                score++;
+                scoreText.innerText = score.toString().padStart(4, '0');
+            }
+            // 좌우 벽 튕김
+            if (this.x < SIDE_WALL_WIDTH + this.radius) {
+                this.x = SIDE_WALL_WIDTH + this.radius;
+                this.vx = Math.abs(this.vx) * 0.6;
+            }
+            if (this.x > width - SIDE_WALL_WIDTH - this.radius) {
+                this.x = width - SIDE_WALL_WIDTH - this.radius;
+                this.vx = -Math.abs(this.vx) * 0.6;
+            }
+        }
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            const r = this.radius;
+            const grad = ctx.createRadialGradient(-r*0.2, -r*0.2, 2, 0, 0, r);
+            grad.addColorStop(0, '#fff');
+            grad.addColorStop(0.5, this.color + 'bb');
+            grad.addColorStop(1, this.color + '44');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
+    }
 
     class GeometryBubble {
         constructor(x, y, color) {
@@ -248,7 +299,6 @@
             
             const r = this.radius;
             
-            // 1. 기본 원형 비눗방울 바디
             const grad = targetCtx.createRadialGradient(-r*0.2, -r*0.2, 2, 0, 0, r);
             grad.addColorStop(0, '#fff');
             grad.addColorStop(0.5, this.color + 'bb');
@@ -258,7 +308,6 @@
             targetCtx.arc(0, 0, r, 0, Math.PI * 2);
             targetCtx.fill();
 
-            // 2. 신비로운 별빛 주름 비주얼
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
             ctx.lineWidth = 1;
             for(let i=0; i<Math.PI*2; i+=Math.PI/4) {
@@ -268,7 +317,6 @@
                 ctx.stroke();
             }
 
-            // 3. 비눗방울 외곽 테두리 하이라이트
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
             
@@ -301,7 +349,7 @@
             const grad = ctx.createLinearGradient(0, 0, -this.length, 0);
             grad.addColorStop(0, '#ffffff');
             grad.addColorStop(0.3, this.color);
-            grad.addColorStop(1, '#64748b'); 
+            grad.addColorStop(1, '#64748b');
             ctx.fillStyle = grad;
             
             ctx.beginPath();
@@ -323,15 +371,15 @@
     class FireworkParticle {
         constructor(x, y, color, type = 'spark') {
             this.x = x; this.y = y; this.color = color;
-            this.type = type; 
+            this.type = type;
             
             const angle = Math.random() * Math.PI * 2;
             if (type === 'spark') {
-                const speed = 2 + Math.random() * 8; 
+                const speed = 2 + Math.random() * 8;
                 this.vx = Math.cos(angle) * speed;
                 this.vy = Math.sin(angle) * speed;
-                this.drag = 0.96 + Math.random() * 0.02; 
-                this.gravity = 0.12; 
+                this.drag = 0.96 + Math.random() * 0.02;
+                this.gravity = 0.12;
                 this.size = 2 + Math.random() * 2;
                 this.life = 1.0;
                 this.decay = 0.015 + Math.random() * 0.02;
@@ -365,7 +413,7 @@
             ctx.globalAlpha = Math.max(0, this.life);
             if (this.type === 'spark') {
                 ctx.shadowBlur = 10; ctx.shadowColor = this.color;
-                ctx.fillStyle = Math.random() > 0.3 ? this.color : '#ffffff'; 
+                ctx.fillStyle = Math.random() > 0.3 ? this.color : '#ffffff';
                 ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
             } else if (this.type === 'ring') {
                 ctx.strokeStyle = this.color; ctx.lineWidth = 1.2;
@@ -401,9 +449,8 @@
         initGame();
     }
 
-    // 타임리밋 카운트다운 루프
     function startTimer() {
-        timeLeft = 120; // 120초
+        timeLeft = 120;
         updateTimerUI();
         if (timerInterval) clearInterval(timerInterval);
         
@@ -422,51 +469,101 @@
     function updateTimerUI() {
         const minutes = Math.floor(timeLeft / 60);
         const seconds = timeLeft % 60;
-        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        document.getElementById('timer-text').innerText = timeString;
-        
-        // 시간이 20초 이하로 남으면 빨간색 경고 및 긴장 연출
+        document.getElementById('timer-text').innerText =
+            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         const timerPanel = document.getElementById('timer-panel');
         if (timeLeft <= 20) {
             timerPanel.style.borderColor = '#ef4444';
-            timerPanel.style.color = '#ef4444';
         } else {
             timerPanel.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-            timerPanel.style.color = 'white';
         }
     }
 
     function triggerGameOver() {
         gameState = 'GAMEOVER';
         failScreen.classList.remove('hidden');
-        // 오버될 때 쏘던 바늘이나 잔상이 사방으로 튕겨나가는 효과 추가
         for (let i = 0; i < 20; i++) {
             particles.push(new FireworkParticle(width / 2, height - 30, '#ef4444', 'spark'));
         }
     }
 
+    // ─── 그리드 생성: 랜덤 구멍 없이 안정적으로 생성 후 연결 검사 ───
     function createGrid() {
-        const scale = Math.pow(0.8, currentLevel - 1);
+        const scale = Math.pow(0.85, currentLevel - 1);
         const r = BASE_RADIUS * scale;
         const h = Math.sqrt(3) * r;
-        
+
+        // 랜덤 구멍 없이 꽉 채워서 생성한 뒤, 나중에 연결 검사로 처리
+        const candidates = [];
         for (let row = 0; row < 5; row++) {
             const cols = row % 2 === 0 ? GRID_COLS : GRID_COLS - 1;
             const startX = SIDE_WALL_WIDTH + r + (row % 2 === 0 ? 0 : r);
             for (let col = 0; col < cols; col++) {
-                // 일부는 비워놓기 위해 약 25%의 확률로 구멍(공백) 생성
-                if (Math.random() < 0.25) continue; 
-
                 const x = startX + (col * r * 2);
                 const y = (row * h) + r + ROOF_Y + 15;
-                const b = new GeometryBubble(x, y, COLORS[Math.floor(Math.random() * COLORS.length)]);
-                b.radius = r;
-                bubbles.push(b);
+                candidates.push({ x, y });
             }
         }
 
-        // 스폰 후 공중에 붕 뜬 고립된 방울이 생기면 이슬 폭발과 함께 즉시 털어내어 안정적 그리드 만듦
-        dropFloatingBubbles();
+        // 스테이지별 랜덤 구멍 (행 단위로 일부만 제거해서 연결 보장)
+        bubbles = [];
+        candidates.forEach(({ x, y }) => {
+            // 레벨이 높을수록 구멍 적게 (더 빽빽하게)
+            const holeChance = currentLevel === 1 ? 0.15 : currentLevel === 2 ? 0.10 : 0.05;
+            if (Math.random() < holeChance) return;
+            const b = new GeometryBubble(x, y, COLORS[Math.floor(Math.random() * COLORS.length)]);
+            b.radius = r;
+            bubbles.push(b);
+        });
+
+        // 고립 버블(천장에 닿지 않는 것)은 즉시 고요히 제거 (애니메이션 없이)
+        removeDisconnectedSilently();
+    }
+
+    // 게임 시작/스테이지 전환 시 조용히 고립 버블 제거 (카운트 X)
+    function removeDisconnectedSilently() {
+        const connected = getConnectedSet();
+        bubbles = bubbles.filter(b => connected.has(b));
+    }
+
+    // 천장에 연결된 버블 집합 반환
+    function getConnectedSet() {
+        const connected = new Set();
+        const scale = Math.pow(0.85, currentLevel - 1);
+        const checkDist = BASE_RADIUS * scale * 2.35;
+
+        const topBubbles = bubbles.filter(b => !b.isPopped && b.y < ROOF_Y + b.radius + 40);
+        const queue = [...topBubbles];
+        topBubbles.forEach(b => connected.add(b));
+
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            bubbles.forEach(b => {
+                if (connected.has(b) || b.isPopped) return;
+                if (Math.hypot(curr.x - b.x, curr.y - b.y) < checkDist) {
+                    connected.add(b);
+                    queue.push(b);
+                }
+            });
+        }
+        return connected;
+    }
+
+    // 터뜨린 후 연결 끊긴 버블을 중력 낙하로 처리
+    function dropFloatingBubbles() {
+        const connected = getConnectedSet();
+        const toFall = [];
+
+        bubbles.forEach(b => {
+            if (!b.isPopped && !connected.has(b)) {
+                toFall.push(b);
+                b.isPopped = true; // 그리드에서 제거
+            }
+        });
+
+        toFall.forEach(b => {
+            fallingBubbles.push(new FallingBubble(b.x, b.y, b.color, b.radius));
+        });
     }
 
     function prepareNextLance() {
@@ -497,13 +594,13 @@
         needle.active = false;
         isFiring = false;
 
-        // 접선(Tangent) 타격 성공 판정!
         if (needle.targetBubble === hitBubble && needle.targetTP) {
             const cluster = getCluster(hitBubble);
             cluster.forEach(b => popAndExplode(b));
             addResonanceEffect(hitBubble.x, hitBubble.y, cluster.length > 2 ? "TANGENT CHAIN POP!" : "TANGENT POP!");
+            // 팝 후 연결 끊긴 버블 낙하
+            setTimeout(() => dropFloatingBubbles(), 50);
         } else {
-            // 접선이 아닌 다른 곳을 건드린 경우 (관통/중심부 직격)
             triggerBlockedEffect(needle, hitBubble);
         }
     }
@@ -523,14 +620,12 @@
         for (let i = 0; i < 2; i++) {
             particles.push(new FireworkParticle(m.x, m.y, m.color, 'ring'));
         }
-        
         const sparkCount = 15 + Math.floor(Math.random() * 8);
         for(let i = 0; i < sparkCount; i++) {
-             if(particles.length < 250) {
-                 particles.push(new FireworkParticle(m.x, m.y, m.color, 'spark'));
-             }
+            if(particles.length < 250) {
+                particles.push(new FireworkParticle(m.x, m.y, m.color, 'spark'));
+            }
         }
-        
         scoreText.innerText = score.toString().padStart(4, '0');
     }
 
@@ -547,7 +642,6 @@
         return cluster;
     }
 
-    // 발사 지점 P에서 원에 그은 정밀 두 접선 및 반지름 직교 계산
     function calculateTangentData(px, py, bubble) {
         const dx = bubble.x - px;
         const dy = bubble.y - py;
@@ -566,7 +660,6 @@
 
         const t1x = px + projLen * ux + perpLen * perpx;
         const t1y = py + projLen * uy + perpLen * perpy;
-
         const t2x = px + projLen * ux - perpLen * perpx;
         const t2y = py + projLen * uy - perpLen * perpy;
 
@@ -580,7 +673,6 @@
     function drawTangentLineAndOrt(px, py, bubble, data) {
         const r = bubble.radius;
         const tLen = data.tLen;
-
         const points = [data.t1, data.t2];
 
         points.forEach((tp, idx) => {
@@ -611,7 +703,7 @@
 
     function drawRightAngleMark(tx, ty, px, py, cx, cy, glow) {
         const size = 9;
-        const a1 = Math.atan2(py - ty, px - tx); 
+        const a1 = Math.atan2(py - ty, px - tx);
         const a2 = Math.atan2(cy - ty, cx - tx);
         ctx.save(); ctx.translate(tx, ty);
         ctx.strokeStyle = glow ? '#ffffff' : '#f87171'; ctx.lineWidth = 1.5;
@@ -648,10 +740,7 @@
         bubbles.forEach(b => {
             if (b.isPopped) return;
             const d = Math.hypot(b.x - mouse.x, b.y - mouse.y);
-            if (d < minDist) {
-                minDist = d;
-                closestBubble = b;
-            }
+            if (d < minDist) { minDist = d; closestBubble = b; }
         });
 
         isResonance = false;
@@ -664,21 +753,16 @@
             if (data) {
                 const angleT1 = Math.atan2(data.t1.y - origin.y, data.t1.x - origin.x);
                 const angleT2 = Math.atan2(data.t2.y - origin.y, data.t2.x - origin.x);
-
-                const tolerance = 0.015; 
+                const tolerance = 0.015;
                 const diff1 = Math.abs(mouseAngle - angleT1);
                 const diff2 = Math.abs(mouseAngle - angleT2);
 
                 if (diff1 < tolerance) {
-                    isResonance = true;
-                    lockedBubble = closestBubble;
-                    lockedTangentPoint = data.t1;
-                    lockedAngle = angleT1;
+                    isResonance = true; lockedBubble = closestBubble;
+                    lockedTangentPoint = data.t1; lockedAngle = angleT1;
                 } else if (diff2 < tolerance) {
-                    isResonance = true;
-                    lockedBubble = closestBubble;
-                    lockedTangentPoint = data.t2;
-                    lockedAngle = angleT2;
+                    isResonance = true; lockedBubble = closestBubble;
+                    lockedTangentPoint = data.t2; lockedAngle = angleT2;
                 }
 
                 drawTangentLineAndOrt(origin.x, origin.y, closestBubble, data);
@@ -718,64 +802,22 @@
         setTimeout(() => div.remove(), 1000);
     }
 
-    function updateScore() { scoreText.innerText = score.toString().padStart(4, '0'); }
-
-    function dropFloatingBubbles() {
-        const connected = new Set();
-        const scale = Math.pow(0.8, currentLevel - 1);
-        const checkDist = BASE_RADIUS * scale * 2.3;
-        
-        const topBubbles = bubbles.filter(b => !b.isPopped && b.y < ROOF_Y + b.radius + 35);
-        const queue = [...topBubbles];
-        topBubbles.forEach(b => connected.add(b));
-
-        while(queue.length > 0) {
-            const curr = queue.shift();
-            const neighbors = bubbles.filter(b => {
-                if (connected.has(b) || b.isPopped) return false;
-                return Math.hypot(curr.x - b.x, curr.y - b.y) < checkDist;
-            });
-            neighbors.forEach(n => { connected.add(n); queue.push(n); });
-        }
-
-        bubbles.forEach(b => {
-            if (!connected.has(b) && !b.isPopped) {
-                b.isPopped = true;
-                particles.push(new FireworkParticle(b.x, b.y, b.color, 'flash'));
-                for(let i=0; i<6; i++) {
-                    particles.push(new FireworkParticle(b.x, b.y, b.color, 'spark'));
-                }
-            }
-        });
-    }
-
-    // 승리 모달 버튼 함수들
-    function openMap() {
-        window.open('https://wontheworld.netlify.app', '_blank');
-    }
-
-    function openTablet() {
-        window.open('https://youtu.be/O5FOfGZAiJo', '_blank');
-    }
-
-    function restartGame() {
-        clearScreen.classList.add('hidden');
-        initGame();
-    }
+    function openMap() { window.open('https://wontheworld.netlify.app', '_blank'); }
+    function openTablet() { window.open('https://youtu.be/O5FOfGZAiJo', '_blank'); }
+    function restartGame() { clearScreen.classList.add('hidden'); initGame(); }
 
     function initGame() {
         gameState = 'PLAYING';
         currentLevel = 1; score = 0; levelClearing = false;
         levelText.innerText = `STAGE 06-${currentLevel}`;
-        bubbles = []; particles = [];
+        bubbles = []; fallingBubbles = []; particles = [];
         activeLance = null; isFiring = false;
         createGrid();
         prepareNextLance();
         startTimer();
-        updateScore();
+        scoreText.innerText = '0000';
     }
 
-    // ✕ 나가기 버튼
     function exitGame() {
         if (gameState !== 'PLAYING') return;
         const confirmed = confirm('게임을 종료하고 인트로로 돌아갈까요?');
@@ -783,17 +825,18 @@
             if (timerInterval) clearInterval(timerInterval);
             if (gameLoopId) { cancelAnimationFrame(gameLoopId); gameLoopId = null; }
             gameState = 'START';
-            bubbles = []; particles = [];
+            bubbles = []; fallingBubbles = []; particles = [];
             failScreen.classList.add('hidden');
             clearScreen.classList.add('hidden');
             startScreen.classList.remove('hidden');
-            // 캔버스 다시 루프 시작
             animate();
         }
     }
 
     function checkWinCondition() {
-        if (gameState === 'PLAYING' && !levelClearing && bubbles.every(b => b.isPopped)) {
+        // 그리드 버블도 없고 낙하 중인 버블도 없어야 클리어
+        const allGone = bubbles.every(b => b.isPopped) && fallingBubbles.length === 0;
+        if (gameState === 'PLAYING' && !levelClearing && allGone) {
             levelClearing = true;
             if (currentLevel < 3) {
                 currentLevel++;
@@ -801,8 +844,9 @@
                     levelClearing = false;
                     levelText.innerText = `STAGE 06-${currentLevel}`;
                     bubbles = [];
+                    fallingBubbles = [];
                     createGrid();
-                    startTimer(); // 스테이지를 깰 때마다 제한 시간 2분 리셋
+                    startTimer();
                 }, 1200);
             } else {
                 gameState = 'CLEAR';
@@ -825,7 +869,9 @@
             if (!isFiring) {
                 ctx.save();
                 ctx.translate(width / 2, height - 30);
-                const angle = isResonance && lockedAngle !== null ? lockedAngle : Math.atan2(mouse.y - (height - 30), mouse.x - width / 2);
+                const angle = isResonance && lockedAngle !== null
+                    ? lockedAngle
+                    : Math.atan2(mouse.y - (height - 30), mouse.x - width / 2);
                 ctx.rotate(angle);
                 const grad = ctx.createLinearGradient(0, 0, -60, 0);
                 grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, nextLanceColor);
@@ -835,12 +881,17 @@
             }
         }
 
+        // 그리드 버블 렌더링 및 팝 처리
         bubbles = bubbles.filter(b => !b.isPopped);
         bubbles.forEach(b => { b.update(); b.draw(); });
 
+        // 낙하 버블 업데이트/렌더링
+        fallingBubbles.forEach(fb => { fb.update(); fb.draw(); });
+        fallingBubbles = fallingBubbles.filter(fb => !fb.dead);
+
+        // 바늘 이동 및 충돌 처리
         if (activeLance && activeLance.active) {
             activeLance.update(); activeLance.draw();
-            
             const hit = bubbles.find(b => !b.isPopped && Math.hypot(b.x - activeLance.x, b.y - activeLance.y) < b.radius + 4);
             if (hit) {
                 handleCollision(activeLance, hit);
@@ -848,6 +899,7 @@
             }
         }
 
+        // 파티클
         particles.forEach((p, i) => {
             p.update(); p.draw();
             if (p.life <= 0) particles.splice(i, 1);
@@ -856,6 +908,7 @@
         checkWinCondition();
         gameLoopId = requestAnimationFrame(animate);
     }
+
     window.onload = init;
 </script>
 </body>
