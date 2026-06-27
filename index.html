@@ -120,7 +120,7 @@
                 </div>
                 <div class="panel border-l-4 border-l-red-500 transition-all duration-300" id="timer-panel">
                     <div class="text-[9px] text-red-400 font-bold orbitron tracking-widest">TIME LEFT</div>
-                    <div class="text-lg font-black text-white orbitron" id="timer-text">02:00</div>
+                    <div class="text-lg font-black text-white orbitron" id="timer-text">01:00</div>
                 </div>
                 <button id="exit-btn" title="게임 나가기">✕</button>
             </div>
@@ -144,7 +144,7 @@
             <h2 class="text-4xl font-black mb-4 orbitron text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600">방울 접선 미션</h2>
             <p class="mb-8 leading-relaxed text-slate-300 text-sm">
                 비눗방울의 도시에 오신 것을 환영합니다!<br>
-                <b>2분(120초)의 제한 시간</b> 안에 방울들을 정화해야 합니다.<br>
+                <b>1분(60초)의 제한 시간</b> 안에 방울들을 정화해야 합니다.<br>
                 총 <b>3개의 정밀 난이도 스테이지</b>를 무사히 돌파해 보세요!<br><br>
                 <span class="text-sky-400">💡 위 방울을 터뜨리면 매달린 방울도 함께 떨어집니다!</span>
             </p>
@@ -207,7 +207,7 @@
     let levelClearing = false;
     let gameLoopId = null;
 
-    let timeLeft = 120;
+    let timeLeft = 60;
     let timerInterval = null;
 
     let lockedBubble = null;
@@ -450,7 +450,7 @@
     }
 
     function startTimer() {
-        timeLeft = 120;
+        timeLeft = 60;
         updateTimerUI();
         if (timerInterval) clearInterval(timerInterval);
         
@@ -472,7 +472,7 @@
         document.getElementById('timer-text').innerText =
             `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         const timerPanel = document.getElementById('timer-panel');
-        if (timeLeft <= 20) {
+        if (timeLeft <= 10) {
             timerPanel.style.borderColor = '#ef4444';
         } else {
             timerPanel.style.borderColor = 'rgba(245, 158, 11, 0.4)';
