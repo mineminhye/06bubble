@@ -120,7 +120,7 @@
                 </div>
                 <div class="panel border-l-4 border-l-red-500 transition-all duration-300" id="timer-panel">
                     <div class="text-[9px] text-red-400 font-bold orbitron tracking-widest">TIME LEFT</div>
-                    <div class="text-lg font-black text-white orbitron" id="timer-text">01:00</div>
+                    <div class="text-lg font-black text-white orbitron" id="timer-text">02:00</div>
                 </div>
                 <button id="exit-btn" title="게임 나가기">✕</button>
             </div>
@@ -144,7 +144,7 @@
             <h2 class="text-4xl font-black mb-4 orbitron text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600">방울 접선 미션</h2>
             <p class="mb-8 leading-relaxed text-slate-300 text-sm">
                 비눗방울의 도시에 오신 것을 환영합니다!<br>
-                <b>1분(60초)의 제한 시간</b> 안에 방울들을 정화해야 합니다.<br>
+                <b>2분(120초)의 제한 시간</b> 안에 방울들을 정화해야 합니다.<br>
                 총 <b>3개의 정밀 난이도 스테이지</b>를 무사히 돌파해 보세요!<br><br>
                 <span class="text-sky-400">💡 위 방울을 터뜨리면 매달린 방울도 함께 떨어집니다!</span>
             </p>
@@ -206,8 +206,88 @@
     let isResonance = false;
     let levelClearing = false;
     let gameLoopId = null;
+    let audioCtx = null;
 
-    let timeLeft = 60;
+    // ── 색깔 → 음계 매핑 ──────────────────────────────
+    // COLORS = ['#38bdf8'파랑, '#f472b6'분홍, '#fbbf24'노랑, '#4ade80'초록, '#a78bfa'보라]
+    // 도(C5) 미(E5) 솔(G5) 라(A5) 파(F5)
+    const COLOR_NOTE = {
+        '#38bdf8': 523.25,  // 파랑 → 도 (C5)
+        '#f472b6': 783.99,  // 분홍 → 솔 (G5)
+        '#fbbf24': 659.25,  // 노랑 → 미 (E5)
+        '#4ade80': 698.46,  // 초록 → 파 (F5)
+        '#a78bfa': 880.00,  // 보라 → 라 (A5)
+    };
+
+    function ensureAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // 피아노 음색 합성: 어택 빠르고 감쇠 자연스럽게
+    // harmonics: [배음비율, 진폭] 배열로 피아노 배음 구조 모방
+    function playPianoNote(freq, t, volume = 0.38, duration = 1.1) {
+        const harmonics = [
+            [1,    1.00],  // 기음
+            [2,    0.50],  // 2배음
+            [3,    0.25],  // 3배음
+            [4,    0.12],  // 4배음
+            [5,    0.06],  // 5배음
+            [6,    0.03],  // 6배음
+        ];
+
+        harmonics.forEach(([ratio, amp]) => {
+            const osc = audioCtx.createOscillator();
+            const g   = audioCtx.createGain();
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.type = 'sine';
+            osc.frequency.value = freq * ratio;
+
+            // 피아노 특유의 빠른 어택 + 긴 감쇠 (높은 배음일수록 더 빨리 감쇠)
+            const decayTime = duration / ratio;
+            g.gain.setValueAtTime(0, t);
+            g.gain.linearRampToValueAtTime(volume * amp, t + 0.008);
+            g.gain.exponentialRampToValueAtTime(volume * amp * 0.3, t + 0.08);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + decayTime);
+            osc.start(t);
+            osc.stop(t + decayTime + 0.05);
+        });
+
+        // 피아노 해머 타격음 — 아주 짧은 저역 클릭
+        const clickOsc = audioCtx.createOscillator();
+        const clickGain = audioCtx.createGain();
+        clickOsc.connect(clickGain); clickGain.connect(audioCtx.destination);
+        clickOsc.type = 'sine';
+        clickOsc.frequency.setValueAtTime(freq * 0.5, t);
+        clickOsc.frequency.exponentialRampToValueAtTime(freq * 0.2, t + 0.015);
+        clickGain.gain.setValueAtTime(volume * 0.4, t);
+        clickGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
+        clickOsc.start(t); clickOsc.stop(t + 0.02);
+    }
+
+    // 단일 팝 — 해당 색깔 음 하나 (뿅)
+    function playPopSound(color) {
+        ensureAudio();
+        const freq = COLOR_NOTE[color] || 523.25;
+        playPianoNote(freq, audioCtx.currentTime, 0.38, 1.0);
+    }
+
+    // 연쇄 팝 — 색깔 음들을 아르페지오로 (뾰로롱)
+    // colors: 팝된 버블들의 색상 배열
+    function playChainPopSound(colors) {
+        ensureAudio();
+        const now = audioCtx.currentTime;
+        const MAX = 6;
+        const subset = colors.slice(0, MAX);
+
+        subset.forEach((color, i) => {
+            const freq = COLOR_NOTE[color] || 523.25;
+            // 각 음이 70ms 간격으로 순차 재생 → 뾰로롱 아르페지오
+            playPianoNote(freq, now + i * 0.07, 0.32, 0.9);
+        });
+    }
+
+    let timeLeft = 120;
     let timerInterval = null;
 
     let lockedBubble = null;
@@ -450,7 +530,7 @@
     }
 
     function startTimer() {
-        timeLeft = 60;
+        timeLeft = 120;
         updateTimerUI();
         if (timerInterval) clearInterval(timerInterval);
         
@@ -472,7 +552,7 @@
         document.getElementById('timer-text').innerText =
             `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         const timerPanel = document.getElementById('timer-panel');
-        if (timeLeft <= 10) {
+        if (timeLeft <= 20) {
             timerPanel.style.borderColor = '#ef4444';
         } else {
             timerPanel.style.borderColor = 'rgba(245, 158, 11, 0.4)';
@@ -597,6 +677,11 @@
         if (needle.targetBubble === hitBubble && needle.targetTP) {
             const cluster = getCluster(hitBubble);
             cluster.forEach(b => popAndExplode(b));
+            if (cluster.length > 1) {
+                playChainPopSound(cluster.map(b => b.color)); // 뾰로롱 — 색깔별 아르페지오
+            } else {
+                playPopSound(hitBubble.color); // 단일 음 — 색깔 음계
+            }
             addResonanceEffect(hitBubble.x, hitBubble.y, cluster.length > 2 ? "TANGENT CHAIN POP!" : "TANGENT POP!");
             // 팝 후 연결 끊긴 버블 낙하
             setTimeout(() => dropFloatingBubbles(), 50);
